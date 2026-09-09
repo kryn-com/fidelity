@@ -31,37 +31,6 @@ def load_tickers(path: Path) -> list[str]:
     return [s for s in symbols if s]
 
 
-def fetch_symbol_metrics(symbol: str, api_key: str) -> dict:
-    params = {
-        "symbol": symbol,
-        "metric": "all",
-        "token": api_key,
-    }
-
-    response = requests.get(BASE_URL, params=params, timeout=30)
-    response.raise_for_status()
-    data = response.json()
-
-    metrics = data.get("metric", {}) or {}
-    current_price = metrics.get("currentEv/freeCashFlowTTM")
-
-    row = {
-        "symbol": symbol,
-        "as_of_date": pd.Timestamp.utcnow().date().isoformat(),
-        "current_price": None,
-        "high_52w": metrics.get("52WeekHigh"),
-        "low_52w": metrics.get("52WeekLow"),
-        "52w_return_pct": metrics.get("52WeekPriceReturnDaily"),
-        "dist_from_high_52w_pct": None,
-    }
-
-    quote_price = None
-    if "52WeekHigh" in metrics and "52WeekLow" in metrics:
-        quote_price = None
-
-    return row
-
-
 def fetch_quote(symbol: str, api_key: str) -> float | None:
     url = "https://finnhub.io/api/v1/quote"
     params = {

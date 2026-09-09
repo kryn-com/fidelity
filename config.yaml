@@ -66,3 +66,4 @@ lot_selection:
 opportunity:
   use_manual_market_strong: true
   use_distance_from_52w_high: false
+  near_52w_high_pct_threshold: 3.0

@@ -19,6 +19,16 @@ REQUIRED_COLUMNS = [
     "CostBasisTotal",
 ]
 
+PRICE_SIGNALS_REQUIRED_COLUMNS = [
+    "symbol",
+    "as_of_date",
+    "current_price",
+    "high_52w",
+    "low_52w",
+    "52w_return_pct",
+    "dist_from_high_52w_pct",
+]
+
 
 def load_config(path: str | Path = "config.yaml") -> Dict[str, Any]:
     with open(path, "r", encoding="utf-8") as f:
@@ -61,6 +71,80 @@ def load_fidelity_csv(source: str | Path | Any) -> pd.DataFrame:
     df["CostBasisTotal"] = df["CostBasisTotal"].apply(_parse_money)
 
     return df
+
+
+def load_price_signals(path: str | Path = "data/price_signals.csv") -> pd.DataFrame:
+    path = Path(path)
+    if not path.exists():
+        return pd.DataFrame(columns=PRICE_SIGNALS_REQUIRED_COLUMNS)
+
+    df = pd.read_csv(path)
+    missing = [c for c in PRICE_SIGNALS_REQUIRED_COLUMNS if c not in df.columns]
+    if missing:
+        raise ValueError(f"Missing required price signal columns: {missing}")
+
+    df = df.copy()
+    df["symbol"] = df["symbol"].astype(str).str.upper()
+    df["as_of_date"] = pd.to_datetime(df["as_of_date"], errors="coerce")
+    numeric_cols = [
+        "current_price",
+        "high_52w",
+        "low_52w",
+        "52w_return_pct",
+        "dist_from_high_52w_pct",
+    ]
+    for col in numeric_cols:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    return df
+
+
+def merge_price_signals(
+    lots: pd.DataFrame,
+    price_signals: pd.DataFrame,
+    config: Dict[str, Any],
+) -> pd.DataFrame:
+    lots = lots.copy()
+
+    if price_signals.empty:
+        lots["SignalAsOfDate"] = pd.NaT
+        lots["CurrentPriceSignal"] = pd.NA
+        lots["High52W"] = pd.NA
+        lots["Low52W"] = pd.NA
+        lots["Return52WPct"] = pd.NA
+        lots["DistFromHigh52WPct"] = pd.NA
+        lots["Near52WeekHigh"] = False
+        return lots
+
+    signals = price_signals.rename(
+        columns={
+            "symbol": "SymbolSignal",
+            "as_of_date": "SignalAsOfDate",
+            "current_price": "CurrentPriceSignal",
+            "high_52w": "High52W",
+            "low_52w": "Low52W",
+            "52w_return_pct": "Return52WPct",
+            "dist_from_high_52w_pct": "DistFromHigh52WPct",
+        }
+    ).copy()
+
+    merged = lots.merge(
+        signals,
+        left_on=lots["Symbol"].astype(str).str.upper(),
+        right_on="SymbolSignal",
+        how="left",
+    ).drop(columns=["key_0"], errors="ignore")
+
+    near_threshold = float(
+        config.get("opportunity", {}).get("near_52w_high_pct_threshold", 3.0)
+    )
+
+    merged["Near52WeekHigh"] = (
+        merged["DistFromHigh52WPct"].notna()
+        & (merged["DistFromHigh52WPct"] <= near_threshold)
+    )
+
+    return merged
 
 
 def get_active_funding_rule(review_date: pd.Timestamp, config: Dict[str, Any]) -> Dict[str, Any]:
@@ -290,15 +374,19 @@ def rank_sale_candidates(
 
     candidates["Sort_LongTermFirst"] = (~candidates["IsLongTerm"]).astype(int)
     candidates["Sort_NearLongTermPenalty"] = candidates["NearLongTerm"].astype(int)
+    candidates["Sort_NotNear52WHigh"] = (~candidates["Near52WeekHigh"].fillna(False)).astype(int)
+    candidates["Sort_DistFromHigh52W"] = candidates["DistFromHigh52WPct"].fillna(999.0)
 
     candidates = candidates.sort_values(
         by=[
             "Sort_LongTermFirst",
             "TaxCostPerDollarRaised",
+            "Sort_NotNear52WHigh",
+            "Sort_DistFromHigh52W",
             "Sort_NearLongTermPenalty",
             "CurrentValue",
         ],
-        ascending=[True, True, True, False],
+        ascending=[True, True, True, True, True, False],
     ).reset_index(drop=True)
 
     return candidates
@@ -461,6 +549,7 @@ def run_review(
     config: Dict[str, Any],
     review_date: Optional[pd.Timestamp] = None,
     market_strong: bool = False,
+    price_signals_path: str | Path = "data/price_signals.csv",
 ) -> Dict[str, Any]:
     review_date = pd.Timestamp.today().normalize() if review_date is None else pd.Timestamp(review_date).normalize()
 
@@ -468,6 +557,11 @@ def run_review(
     lots = add_tax_fields(lots, config, review_date)
 
     warnings: List[str] = []
+
+    price_signals = load_price_signals(price_signals_path)
+    if price_signals.empty:
+        warnings.append("No price_signals.csv found; sale ranking will ignore market-strength hints.")
+    lots = merge_price_signals(lots, price_signals, config)
 
     cash_bucket_rows = identify_cash_bucket_rows(lots, config)
     current_cash = float(cash_bucket_rows["CurrentValue"].sum())

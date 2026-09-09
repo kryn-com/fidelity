@@ -12,6 +12,27 @@ OUTPUT_PATH = Path("data/price_signals.csv")
 BASE_URL = "https://finnhub.io/api/v1/stock/metric"
 
 
+def classify_price_signal_error(exc: Exception) -> str:
+    response = getattr(exc, "response", None)
+    status_code = getattr(response, "status_code", None)
+
+    raw_text = ""
+    if response is not None:
+        raw_text = str(getattr(response, "text", "") or "")
+        try:
+            payload = response.json()
+            if isinstance(payload, dict):
+                raw_text = f"{raw_text} {payload.get('error', '')}".strip()
+        except ValueError:
+            pass
+
+    combined = f"{status_code} {raw_text}".strip().lower()
+    if status_code == 403 or "unsupported" in combined or "not supported" in combined:
+        return "finnhub_unsupported"
+
+    return str(exc)
+
+
 def load_tickers(path: Path) -> list[str]:
     if not path.exists():
         raise FileNotFoundError(f"Ticker file not found: {path}")
@@ -99,7 +120,7 @@ def main() -> None:
                     "low_52w": None,
                     "52w_return_pct": None,
                     "dist_from_high_52w_pct": None,
-                    "error": str(exc),
+                    "error": classify_price_signal_error(exc),
                 }
             )
 

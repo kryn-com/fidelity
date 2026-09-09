@@ -1,0 +1,68 @@
+account:
+  review_frequency_days: 14
+  specific_id_required: true
+
+cash_bucket:
+  target_ticker: FDLXX
+  target_ticker_aliases:
+    - FDLXX
+
+funding_plan:
+  january_lump_sum: 20000
+  monthly_withdrawal: 2500
+  monthly_withdrawal_months: 12
+
+funding_targets:
+  as_of_rules:
+    - start_date: 2026-09-01
+      end_date: 2026-10-31
+      floor: 5000
+      target: 10000
+      ceiling: 15000
+    - start_date: 2026-11-01
+      end_date: 2026-11-30
+      floor: 10000
+      target: 15000
+      ceiling: 20000
+    - start_date: 2026-12-01
+      end_date: 2026-12-31
+      floor: 20000
+      target: 25000
+      ceiling: 30000
+    - start_date: 2027-01-01
+      end_date: 2027-01-31
+      floor: 22500
+      target: 25000
+      ceiling: 30000
+
+tax:
+  ltcg_target: 6000
+  realized_ltcg_ytd: 0
+  lt_rate: 0.15
+  st_rate: 0.32
+
+harvest:
+  enabled: true
+  min_loss_dollars: 500
+  min_loss_pct: 5.0
+
+cash_like_sources:
+  enabled_symbols:
+    - GOVT
+    - VTEB
+  priority_order:
+    - GOVT
+    - VTEB
+  allow_partial_conversion: true
+  max_conversion_ltcg_dollars: 1000
+
+lot_selection:
+  partial_last_lot: true
+  avoid_short_term_gains: true
+  allow_short_term_if_no_alternative: true
+  max_lots: 8
+  days_to_long_term_threshold: 30
+
+opportunity:
+  use_manual_market_strong: true
+  use_distance_from_52w_high: false

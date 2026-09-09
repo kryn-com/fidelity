@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.streamlit/secrets.toml
+history/
+data/raw/
+*.log
+fidelity_tax_lots*.csv

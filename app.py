@@ -8,6 +8,39 @@ import streamlit as st
 from engine import get_active_funding_rule, load_config, run_review
 
 
+SIGNAL_DISPLAY_COLUMNS = [
+    "CurrentPriceSignal",
+    "High52W",
+    "DistFromHigh52WPct",
+    "Near52WeekHigh",
+]
+
+
+def format_signal_columns_for_display(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df.copy()
+
+    display_df = df.copy()
+    for column in SIGNAL_DISPLAY_COLUMNS:
+        if column not in display_df.columns:
+            continue
+
+        if column == "Near52WeekHigh":
+            display_df[column] = display_df[column].map(
+                lambda value: "Yes" if pd.notna(value) and bool(value) else "No" if pd.notna(value) else "—"
+            )
+            continue
+
+        series = pd.to_numeric(display_df[column], errors="coerce")
+        display_df[column] = series.map(
+            lambda value: "—" if pd.isna(value) else (
+                f"${value:,.2f}" if column in {"CurrentPriceSignal", "High52W"} else f"{value:.2f}%"
+            )
+        )
+
+    return display_df
+
+
 st.set_page_config(page_title="Taxable Review Tool", layout="wide")
 st.title("Taxable Review Tool")
 
@@ -93,13 +126,15 @@ else:
 
     st.subheader("Cash-like conversion plan")
     if result["cash_like_plan"]:
-        st.dataframe(pd.DataFrame(result["cash_like_plan"]), use_container_width=True)
+        cash_like_df = format_signal_columns_for_display(pd.DataFrame(result["cash_like_plan"]))
+        st.dataframe(cash_like_df, use_container_width=True)
     else:
         st.write("No cash-like conversions proposed.")
 
     st.subheader("Sell plan")
     if result["sell_plan"]:
-        st.dataframe(pd.DataFrame(result["sell_plan"]), use_container_width=True)
+        sell_plan_df = format_signal_columns_for_display(pd.DataFrame(result["sell_plan"]))
+        st.dataframe(sell_plan_df, use_container_width=True)
     else:
         st.write("No broader lot sales proposed.")
 
